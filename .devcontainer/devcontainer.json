@@ -1,0 +1,80 @@
+{
+  "name": "School Lunch",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/microsoft/aspire-devcontainer-feature/aspire:latest": {
+      "installCli": true
+    },
+    "ghcr.io/devcontainers/features/node:latest": {
+      "version": "24",
+      "pnpmVersion": "none"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:latest": {
+      "version": "latest",
+      "moby": true
+    },
+    "ghcr.io/devcontainers/features/azure-cli:latest": {
+      "version": "latest"
+    }
+  },
+  "containerEnv": {
+    "UV_LINK_MODE": "copy"
+  },
+  "secrets": {
+    "NEIS_API_KEY": {
+      "description": "NEIS Open API key injected into the API and MCP server by Aspire."
+    }
+  },
+  "forwardPorts": [5173, 8000, 8001, 4173],
+  "portsAttributes": {
+    "5173": {
+      "label": "Web development server",
+      "onAutoForward": "openBrowser"
+    },
+    "8000": {
+      "label": "FastAPI and OpenAPI",
+      "onAutoForward": "notify"
+    },
+    "8001": {
+      "label": "MCP Streamable HTTP",
+      "onAutoForward": "notify"
+    },
+    "4173": {
+      "label": "Vite preview and E2E",
+      "onAutoForward": "silent"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "microsoft-aspire.aspire-vscode",
+        "ms-azuretools.vscode-docker",
+        "ms-playwright.playwright",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "${containerWorkspaceFolder}/src/api/.venv/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": ["src/api/tests"],
+        "eslint.workingDirectories": ["src/web"],
+        "remote.autoForwardPorts": true,
+        "remote.autoForwardPortsSource": "hybrid",
+        "remote.otherPortsAttributes": {
+          "onAutoForward": "ignore"
+        },
+        "js": {
+          "ts.sdk.path": "src/web/node_modules/typescript/lib"
+        }
+      }
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "remoteUser": "vscode"
+}

@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/api
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: src/api/uv.lock
+      - run: uv sync --all-groups --frozen
+      - run: uv run pytest
+
+  mcp:
+    name: MCP
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/mcp
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: src/mcp/uv.lock
+      - run: uv sync --all-groups --frozen
+      - run: uv run pytest
+
+  agent:
+    name: Agent
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/agent
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: src/agent/uv.lock
+      - run: uv sync --all-groups --frozen
+      - run: uv run pytest
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: src/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/e2e
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            src/web/package-lock.json
+            src/e2e/package-lock.json
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: src/web
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+
+  deploy:
+    name: Deploy to Azure
+    if: ${{ github.event_name == 'push' && vars.AZURE_DEPLOYMENT == 'true' }}
+    needs: [api, mcp, agent, web, e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Install Aspire CLI
+        run: |
+          curl -sSL https://aspire.dev/install.sh | bash
+          echo "$HOME/.aspire/bin" >> "$GITHUB_PATH"
+      - run: npm run build
+      - name: Sign in to Azure
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy with Aspire
+        run: aspire deploy --apphost ./apphost.mts --environment production --non-interactive
+        env:
+          Azure__SubscriptionId: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          Azure__Location: ${{ vars.AZURE_LOCATION || 'koreacentral' }}
+          Azure__ResourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
+          Parameters__neis_api_key: ${{ secrets.NEIS_API_KEY }}
